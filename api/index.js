@@ -57,6 +57,19 @@ const memberSchema = new mongoose.Schema({
 
 const Member = mongoose.models.Member || mongoose.model('Member', memberSchema);
 
+// Gallery Schema
+const gallerySchema = new mongoose.Schema({
+  src: { type: String, required: true },
+  alt: { type: String, required: true },
+  category: { type: String, required: true },
+  uploadedBy: { type: String, required: true }, // Admin who uploaded
+  uploadedAt: { type: Date, default: Date.now },
+}, {
+  timestamps: true,
+});
+
+const Gallery = mongoose.models.Gallery || mongoose.model('Gallery', gallerySchema);
+
 // Default members data for initialization
 const defaultMembers = [
   {
@@ -309,6 +322,63 @@ app.post('/api/members/reset', isAdmin, async (req, res) => {
   } catch (error) {
     console.error('Error resetting members:', error);
     res.status(500).json({ error: 'Failed to reset members' });
+  }
+});
+
+// Gallery - Get all
+app.get('/api/gallery', async (req, res) => {
+  try {
+    await connectDB();
+    const photos = await Gallery.find().sort({ uploadedAt: -1 });
+    res.json(photos);
+  } catch (error) {
+    console.error('Error fetching gallery photos:', error);
+    res.status(500).json({ error: 'Failed to fetch gallery photos' });
+  }
+});
+
+// Gallery - Upload (Admin only)
+app.post('/api/gallery', isAdmin, async (req, res) => {
+  try {
+    await connectDB();
+    const { src, alt, category } = req.body;
+    
+    // Validate required fields
+    if (!src || !alt || !category) {
+      return res.status(400).json({ 
+        error: 'src, alt, and category are required' 
+      });
+    }
+    
+    const newPhoto = new Gallery({
+      src,
+      alt,
+      category,
+      uploadedBy: 'admin' // In a real app, this would be the admin's ID or name
+    });
+    
+    await newPhoto.save();
+    res.status(201).json(newPhoto);
+  } catch (error) {
+    console.error('Error uploading photo:', error);
+    res.status(500).json({ error: 'Failed to upload photo' });
+  }
+});
+
+// Gallery - Delete (Admin only)
+app.delete('/api/gallery/:id', isAdmin, async (req, res) => {
+  try {
+    await connectDB();
+    const deleted = await Gallery.findByIdAndDelete(req.params.id);
+    
+    if (!deleted) {
+      return res.status(404).json({ error: 'Photo not found' });
+    }
+    
+    res.json({ success: true, deleted });
+  } catch (error) {
+    console.error('Error deleting photo:', error);
+    res.status(500).json({ error: 'Failed to delete photo' });
   }
 });
 
