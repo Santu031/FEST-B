@@ -1,0 +1,21 @@
+{
+  "name": "fest-backend",
+  "version": "1.0.0",
+  "description": "Backend API for FEST application",
+  "main": "api/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "node api/index.js",
+    "build": "echo 'Build complete'"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "mongoose": "^8.19.1",
+    "nodemailer": "^7.0.9"
+  }
+}
