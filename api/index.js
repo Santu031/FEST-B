@@ -14,27 +14,33 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' })); // Increased limit for image uploads
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// MongoDB Connection
+// MongoDB Connection - Optimized for Vercel Serverless
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/fest';
 
-if (mongoose.connection.readyState === 0) {
-  mongoose.connect(MONGODB_URI)
-    .then(() => {
-      console.log('✅ Connected to MongoDB');
-    })
-    .catch((err) => {
-      console.error('❌ MongoDB connection error:', err.message);
+let cachedDb = null;
+
+const connectDB = async () => {
+  if (cachedDb && mongoose.connection.readyState === 1) {
+    return cachedDb;
+  }
+
+  try {
+    const db = await mongoose.connect(MONGODB_URI, {
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
     });
-}
-
-// Handle MongoDB connection errors
-mongoose.connection.on('error', (err) => {
-  console.error('MongoDB error:', err);
-});
-
-mongoose.connection.on('disconnected', () => {
-  console.log('MongoDB disconnected');
-});
+    cachedDb = db;
+    console.log('✅ Connected to MongoDB');
+    
+    // Initialize database after connection
+    await initializeDatabase();
+    
+    return db;
+  } catch (err) {
+    console.error('❌ MongoDB connection error:', err.message);
+    throw err;
+  }
+};
 
 // Member Schema
 const memberSchema = new mongoose.Schema({
@@ -142,11 +148,6 @@ const initializeDatabase = async () => {
   }
 };
 
-// Initialize on MongoDB connection
-mongoose.connection.once('open', () => {
-  initializeDatabase();
-});
-
 // Admin password (in production, use environment variables and proper authentication)
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
 
@@ -170,8 +171,13 @@ const isAdmin = (req, res, next) => {
 // Routes
 
 // Health check
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', message: 'Backend is running' });
+app.get('/api/health', async (req, res) => {
+  try {
+    await connectDB();
+    res.json({ status: 'ok', message: 'Backend is running', db: 'connected' });
+  } catch (error) {
+    res.json({ status: 'ok', message: 'Backend is running', db: 'disconnected' });
+  }
 });
 
 // Auth - Login
@@ -201,17 +207,19 @@ app.get('/api/auth/verify', isAdmin, (req, res) => {
 // Members - Get all
 app.get('/api/members', async (req, res) => {
   try {
-    const members = await Member.find().sort({ joinYear: 1 });
+    await connectDB();
+    const members = await Member.find().sort({ createdAt: -1 });
     res.json(members);
   } catch (error) {
     console.error('Error fetching members:', error);
-    res.status(500).json({ error: 'Failed to fetch members' });
+    res.status(500).json({ error: 'Failed to fetch members', details: error.message });
   }
 });
 
 // Members - Get by ID
 app.get('/api/members/:id', async (req, res) => {
   try {
+    await connectDB();
     const member = await Member.findById(req.params.id);
     
     if (!member) {
@@ -228,6 +236,7 @@ app.get('/api/members/:id', async (req, res) => {
 // Members - Create (Admin only)
 app.post('/api/members', isAdmin, async (req, res) => {
   try {
+    await connectDB();
     // Validate required fields
     if (!req.body.name || !req.body.role || !req.body.joinYear) {
       return res.status(400).json({ 
@@ -248,6 +257,7 @@ app.post('/api/members', isAdmin, async (req, res) => {
 // Members - Update (Admin only)
 app.put('/api/members/:id', isAdmin, async (req, res) => {
   try {
+    await connectDB();
     const updatedMember = await Member.findByIdAndUpdate(
       req.params.id,
       req.body,
@@ -268,6 +278,7 @@ app.put('/api/members/:id', isAdmin, async (req, res) => {
 // Members - Delete (Admin only)
 app.delete('/api/members/:id', isAdmin, async (req, res) => {
   try {
+    await connectDB();
     const deleted = await Member.findByIdAndDelete(req.params.id);
     
     if (!deleted) {
@@ -284,6 +295,7 @@ app.delete('/api/members/:id', isAdmin, async (req, res) => {
 // Members - Reset to default (Admin only)
 app.post('/api/members/reset', isAdmin, async (req, res) => {
   try {
+    await connectDB();
     // Delete all existing members
     await Member.deleteMany({});
     
