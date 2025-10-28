@@ -2,9 +2,14 @@ import express from 'express';
 import cors from 'cors';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
+import jwt from 'jsonwebtoken';
 
 // Load environment variables
 dotenv.config();
+
+// JWT Configuration
+const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-key-change-in-production';
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '24h';
 
 const app = express();
 
@@ -163,7 +168,7 @@ const initializeDatabase = async () => {
 // Admin password (in production, use environment variables and proper authentication)
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
 
-// Middleware to check admin authentication
+// Middleware to check admin authentication (updated for JWT)
 const isAdmin = (req, res, next) => {
   const authHeader = req.headers.authorization;
   
@@ -171,13 +176,15 @@ const isAdmin = (req, res, next) => {
     return res.status(401).json({ error: 'Unauthorized' });
   }
   
-  const password = authHeader.substring(7);
+  const token = authHeader.substring(7);
   
-  if (password !== ADMIN_PASSWORD) {
-    return res.status(401).json({ error: 'Invalid credentials' });
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (err) {
+    return res.status(401).json({ error: 'Invalid or expired token' });
   }
-  
-  next();
 };
 
 // Routes
@@ -192,7 +199,7 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
-// Auth - Login
+// Auth - Login (updated to use JWT)
 app.post('/api/auth/login', (req, res) => {
   const { password } = req.body;
   
@@ -201,9 +208,19 @@ app.post('/api/auth/login', (req, res) => {
   }
   
   if (password === ADMIN_PASSWORD) {
+    // Generate JWT token with 24h expiration
+    const token = jwt.sign(
+      { 
+        id: 'admin', 
+        role: 'admin',
+        exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60) // 24 hours
+      },
+      JWT_SECRET
+    );
+    
     return res.json({ 
       success: true, 
-      token: password, // In production, generate a proper JWT token
+      token: token,
       message: 'Login successful' 
     });
   }
